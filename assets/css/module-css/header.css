@@ -158,6 +158,10 @@
   padding: 12px 0;
 }
 
+.header-style-one .header-lower .logo-box img {
+  width: 200px;
+}
+
 .header-style-one .sticky-header .logo-box img,
 .header-style-one .header-lower .logo-box img {
   transform: scale(0.9);
@@ -169,6 +173,7 @@
 .menu-area {
   display: flex;
   flex: 1;
+  justify-content: flex-end;
 }
 
 .main-menu {
@@ -1106,6 +1111,10 @@ div#mCSB_1_container {
 
   .header-style-five .menu-right-content {
     display: none;
+  }
+
+  a.navigation__button {
+    margin: 10px 25px;
   }
 }
 

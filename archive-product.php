@@ -39,7 +39,7 @@ get_header(); ?>
                     data-wow-duration="1500ms">
                     <div class="inner-box">
                         <?php if($price): ?>
-                        <span class="post-date">от <?php echo esc_html($price); ?> руб</span>
+                        <span class="post-date">от <?php echo esc_html($price); ?> usd</span>
                         <?php endif; ?>
                         <h3><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
                         <?php if($short_description): ?>

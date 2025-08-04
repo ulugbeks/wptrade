@@ -111,7 +111,7 @@ while(have_posts()): the_post();
                     <div data-prices="mini">
                         <?php foreach($price_options as $option): ?>
                         <h4 data-price="<?php echo esc_attr($option['price_type']); ?>">
-                            <?php echo esc_html($option['price_amount']); ?> руб - <?php echo esc_html($option['price_period']); ?>
+                            <?php echo esc_html($option['price_amount']); ?>$ - <?php echo esc_html($option['price_period']); ?>
                         </h4>
                         <?php endforeach; ?>
                     </div>

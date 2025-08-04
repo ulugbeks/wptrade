@@ -1,4 +1,3 @@
-
 <?php
 /**
  * Template Name: Личный кабинет
@@ -32,92 +31,6 @@ $products = get_posts(array(
     'orderby' => 'menu_order',
     'order' => 'ASC'
 ));
-
-// Обработка покупки за баланс
-if (isset($_POST['action']) && $_POST['action'] === 'buy_with_balance') {
-    check_ajax_referer('dashboard_nonce', 'nonce');
-    
-    $product_id = intval($_POST['product_id']);
-    $price = floatval($_POST['price']);
-    $account_number = sanitize_text_field($_POST['account_number']);
-    $period = intval($_POST['period']);
-    
-    if ($user_balance >= $price) {
-        // Списываем с баланса
-        if (VolumeFX_Payments::deduct_balance($current_user->ID, $price)) {
-            // Создаем запись о платеже
-            $payment_id = VolumeFX_Payments::create_payment(array(
-                'user_id' => $current_user->ID,
-                'type' => 'subscription',
-                'product_id' => $product_id,
-                'amount' => $price,
-                'status' => 'completed'
-            ));
-            
-            // Сохраняем данные для активации
-            update_post_meta($product_id, 'payment_account_' . $payment_id, $account_number);
-            update_post_meta($product_id, 'payment_period_' . $payment_id, $period);
-            
-            // Активируем подписку через API
-            $indicator_slug = get_field('product_indicator_slug', $product_id);
-            $indicator_id = $api->getIndicatorId($indicator_slug);
-            
-            if ($indicator_id) {
-                $end_date = date('Y-m-d', strtotime("+{$period} days"));
-                
-                $result = $api->updateUserSubscription(
-                    $current_user->ID,
-                    $indicator_id,
-                    $account_number,
-                    $end_date
-                );
-                
-                wp_send_json_success('Подписка успешно активирована');
-            }
-        } else {
-            wp_send_json_error('Недостаточно средств на балансе');
-        }
-    } else {
-        wp_send_json_error('Недостаточно средств на балансе');
-    }
-    exit;
-}
-
-// Обработка управления подпиской
-if (isset($_POST['action']) && $_POST['action'] === 'update_subscription') {
-    check_ajax_referer('dashboard_nonce', 'nonce');
-    
-    $indicator_id = sanitize_text_field($_POST['indicator_id']);
-    $account_number = sanitize_text_field($_POST['account_number']);
-    $subscription_end = sanitize_text_field($_POST['subscription_end']);
-    
-    $result = $api->updateUserSubscription(
-        $current_user->ID,
-        $indicator_id,
-        $account_number,
-        $subscription_end
-    );
-    
-    wp_send_json($result);
-    exit;
-}
-
-// Обработка обновления профиля
-if (isset($_POST['action']) && $_POST['action'] === 'update_profile') {
-    check_ajax_referer('dashboard_nonce', 'nonce');
-    
-    wp_update_user(array(
-        'ID' => $current_user->ID,
-        'first_name' => sanitize_text_field($_POST['first_name']),
-        'last_name' => sanitize_text_field($_POST['last_name']),
-        'display_name' => sanitize_text_field($_POST['first_name']) . ' ' . sanitize_text_field($_POST['last_name'])
-    ));
-    
-    update_user_meta($current_user->ID, 'phone', sanitize_text_field($_POST['phone']));
-    
-    wp_send_json_success('Профиль обновлен');
-    exit;
-}
 
 // Проверяем уведомления
 $show_payment_sent = isset($_GET['payment_sent']) && $_GET['payment_sent'] == '1';
@@ -209,12 +122,17 @@ $show_activated = isset($_GET['activated']) && $_GET['activated'] == '1';
                             
                             // Получаем минимальную цену
                             $min_price = PHP_FLOAT_MAX;
-                            if($price_options) {
+                            if($price_options && is_array($price_options)) {
                                 foreach($price_options as $option) {
-                                    if($option['price_amount'] < $min_price) {
+                                    if(isset($option['price_amount']) && $option['price_amount'] < $min_price) {
                                         $min_price = $option['price_amount'];
                                     }
                                 }
+                            }
+                            
+                            // Если цены не настроены, используем дефолтную
+                            if($min_price == PHP_FLOAT_MAX) {
+                                $min_price = 199;
                             }
                             
                             // Проверяем активную подписку
@@ -270,18 +188,20 @@ $show_activated = isset($_GET['activated']) && $_GET['activated'] == '1';
                                     
                                     <div class="card-actions">
                                         <?php if($user_balance >= $min_price): ?>
-                                            <button class="theme-btn btn-small buy-with-balance" 
-                                                    data-product-id="<?php echo $product->ID; ?>"
-                                                    data-product-name="<?php echo esc_attr(get_the_title($product->ID)); ?>"
-                                                    data-indicator-id="<?php echo $indicator_id; ?>">
-                                                Купить за баланс
-                                            </button>
+                                        <button class="theme-btn btn-small buy-with-balance" 
+                                                data-product-id="<?php echo $product->ID; ?>"
+                                                data-product-name="<?php echo esc_attr(get_the_title($product->ID)); ?>"
+                                                data-indicator-id="<?php echo $indicator_id; ?>">
+                                            Купить за баланс
+                                        </button>
                                         <?php endif; ?>
                                         
-                                        <a href="<?php echo home_url('/payment?type=subscription&product_id=' . $product->ID . '&amount=' . $min_price); ?>" 
-                                           class="theme-btn btn-small btn-outline">
-                                            Оплатить картой
-                                        </a>
+                                        <button class="theme-btn btn-small btn-outline buy-with-crypto" 
+                                                data-product-id="<?php echo $product->ID; ?>"
+                                                data-product-name="<?php echo esc_attr(get_the_title($product->ID)); ?>"
+                                                data-indicator-id="<?php echo $indicator_id; ?>">
+                                            Оплатить криптой
+                                        </button>
                                         
                                         <a href="<?php echo get_permalink($product->ID); ?>" class="link-btn">
                                             Подробнее →
@@ -307,7 +227,7 @@ $show_activated = isset($_GET['activated']) && $_GET['activated'] == '1';
                         <p>Текущий баланс вашего аккаунта</p>
                         
                         <div class="balance-actions">
-                            <a href="<?php echo home_url('/payment?type=balance'); ?>" class="theme-btn btn-one">
+                            <a href="<?php echo home_url('/balance-topup'); ?>" class="theme-btn btn-one">
                                 <i class="fas fa-plus-circle"></i> Пополнить баланс
                             </a>
                         </div>
@@ -547,9 +467,7 @@ $show_activated = isset($_GET['activated']) && $_GET['activated'] == '1';
                 <div class="form-group">
                     <label>Период подписки</label>
                     <select name="period" class="form-control" id="period-select" required>
-                        <?php
-                        // Здесь нужно динамически подгружать опции в зависимости от продукта
-                        ?>
+                        <!-- Опции загружаются динамически -->
                     </select>
                 </div>
                 
@@ -574,109 +492,169 @@ $show_activated = isset($_GET['activated']) && $_GET['activated'] == '1';
     </div>
 </div>
 
+<!-- Модальное окно оплаты криптовалютой -->
+<div id="crypto-payment-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Оплата криптовалютой</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p class="mb_20">Вы покупаете: <strong id="crypto-product-name"></strong></p>
+            
+            <form id="crypto-payment-form">
+                <input type="hidden" id="crypto_product_id" name="product_id">
+                <input type="hidden" id="crypto_indicator_id" name="indicator_id">
+                <input type="hidden" id="crypto_price" name="price">
+                
+                <div class="form-group">
+                    <label>Номер торгового счета</label>
+                    <input type="text" name="account_number" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Период подписки</label>
+                    <select name="period" class="form-control" id="crypto-period-select" required>
+                        <option value="30" data-price="199">1 месяц - 199 $</option>
+                        <option value="90" data-price="299">3 месяца - 299 $</option>
+                        <option value="180" data-price="499">6 месяцев - 499 $</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Стоимость</label>
+                    <div class="price-display">
+                        <span id="crypto-selected-price">0</span> $
+                    </div>
+                </div>
+                
+                <div class="crypto-info-box">
+                    <h4>Оплата в USDT (TRC20)</h4>
+                    <p>Отправьте <strong><span id="crypto-amount">0</span> USDT</strong> на адрес:</p>
+                    <div class="wallet-address">
+                        <input type="text" id="crypto-address" value="TWVsrW7qEfFxzwt4xMVMWJwvQPn9ssTSxp" readonly>
+                        <button type="button" class="copy-btn" onclick="copyAddress()">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Hash транзакции</label>
+                    <input type="text" name="transaction_hash" class="form-control" placeholder="Введите hash транзакции после оплаты" required>
+                    <small>После перевода введите hash транзакции</small>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="theme-btn btn-one">Я оплатил</button>
+                    <button type="button" class="theme-btn btn-two cancel-btn">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 jQuery(document).ready(function($) {
+    console.log('Dashboard script loaded');
+    
     // Переключение вкладок
-    $('.dashboard-menu a').on('click', function(e) {
+    $(document).on('click', '.dashboard-menu a[data-tab]', function(e) {
+        e.preventDefault();
+        console.log('Tab clicked:', $(this).data('tab'));
+        
         var tab = $(this).data('tab');
         
-        if(tab) {
-            e.preventDefault();
-            
-            $('.dashboard-menu li').removeClass('active');
-            $(this).parent().addClass('active');
-            
-            $('.dashboard-content').removeClass('active');
-            $('#' + tab).addClass('active');
-            
-            // Обновляем URL без перезагрузки
-            history.pushState(null, '', '#' + tab);
+        // Убираем активный класс со всех элементов
+        $('.dashboard-menu li').removeClass('active');
+        $('.dashboard-content').removeClass('active');
+        
+        // Добавляем активный класс нужным элементам
+        $(this).parent('li').addClass('active');
+        $('#' + tab).addClass('active');
+        
+        // Обновляем URL
+        if(history.pushState) {
+            history.pushState(null, null, '#' + tab);
         }
     });
     
     // Проверяем hash при загрузке
     if(window.location.hash) {
         var hash = window.location.hash.substring(1);
-        $('.dashboard-menu a[data-tab="' + hash + '"]').click();
+        console.log('Hash found:', hash);
+        $('.dashboard-menu a[data-tab="' + hash + '"]').trigger('click');
     }
     
     // Управление подпиской
-    $('.manage-subscription').on('click', function() {
-        var indicatorId = $(this).data('indicator-id');
-        var account = $(this).data('account');
-        var date = $(this).data('date');
+    $(document).on('click', '.manage-subscription', function(e) {
+        e.preventDefault();
+        console.log('Manage subscription clicked');
         
-        $('#indicator_id').val(indicatorId);
-        $('#account_number').val(account);
-        $('#subscription_end').val(date);
+        $('#indicator_id').val($(this).data('indicator-id'));
+        $('#account_number').val($(this).data('account'));
+        $('#subscription_end').val($(this).data('date'));
         
         $('#subscription-modal').fadeIn();
     });
     
     // Покупка за баланс
-    $('.buy-with-balance').on('click', function() {
+    $(document).on('click', '.buy-with-balance', function(e) {
+        e.preventDefault();
+        console.log('Buy with balance clicked');
+        
         var productId = $(this).data('product-id');
         var productName = $(this).data('product-name');
-        var indicatorId = $(this).data('indicator-id');
         
         $('#buy_product_id').val(productId);
-        $('#buy_indicator_id').val(indicatorId);
         $('#product-name').text(productName);
         
-        // Загружаем опции цен для продукта
-        loadPriceOptions(productId);
+        // Добавляем дефолтные опции
+        $('#period-select').html(`
+            <option value="30" data-price="199">1 месяц - 199 $</option>
+            <option value="90" data-price="299">3 месяца - 299 $</option>
+            <option value="180" data-price="499">6 месяцев - 499 $</option>
+        `);
         
+        updateSelectedPrice();
         $('#buy-balance-modal').fadeIn();
     });
     
-    // Загрузка опций цен
-    function loadPriceOptions(productId) {
-        // Здесь нужно сделать AJAX запрос для получения цен продукта
-        // Пока используем данные из PHP
-        var priceOptions = <?php 
-            $all_price_options = array();
-            foreach($products as $p) {
-                $opts = get_field('product_price_options', $p->ID);
-                if($opts) {
-                    $all_price_options[$p->ID] = $opts;
-                }
-            }
-            echo json_encode($all_price_options);
-        ?>;
+    // Покупка за криптовалюту
+    $(document).on('click', '.buy-with-crypto', function(e) {
+        e.preventDefault();
+        console.log('Buy with crypto clicked');
         
-        if(priceOptions[productId]) {
-            var select = $('#period-select');
-            select.empty();
-            
-            $.each(priceOptions[productId], function(i, option) {
-                var days = 30; // По умолчанию
-                if(option.price_period.includes('3')) days = 90;
-                if(option.price_period.includes('6')) days = 180;
-                
-                select.append($('<option>', {
-                    value: days,
-                    text: option.price_period + ' - ' + option.price_amount + ' $',
-                    'data-price': option.price_amount
-                }));
-            });
-            
-            updateSelectedPrice();
-        }
-    }
+        var productId = $(this).data('product-id');
+        var productName = $(this).data('product-name');
+        
+        $('#crypto_product_id').val(productId);
+        $('#crypto-product-name').text(productName);
+        
+        // Добавляем дефолтные опции
+        $('#crypto-period-select').html(`
+            <option value="30" data-price="199">1 месяц - 199 $</option>
+            <option value="90" data-price="299">3 месяца - 299 $</option>
+            <option value="180" data-price="499">6 месяцев - 499 $</option>
+        `);
+        
+        updateCryptoPrice();
+        $('#crypto-payment-modal').fadeIn();
+    });
     
     // Обновление выбранной цены
-    $('#period-select').on('change', function() {
+    $(document).on('change', '#period-select', function() {
         updateSelectedPrice();
     });
     
     function updateSelectedPrice() {
         var selectedOption = $('#period-select option:selected');
-        var price = parseFloat(selectedOption.data('price'));
-        var currentBalance = <?php echo $user_balance; ?>;
+        var price = parseFloat(selectedOption.attr('data-price')) || 199;
+        var currentBalance = <?php echo isset($user_balance) ? $user_balance : 0; ?>;
         var afterBalance = currentBalance - price;
         
         $('#selected-price').text(price.toFixed(2));
-        $('#balance-after').text(afterBalance.toFixed(2) + ' $');
+        $('#balance-after').html('После покупки: <strong>' + afterBalance.toFixed(2) + ' $</strong>');
         
         if(afterBalance < 0) {
             $('#balance-after').addClass('text-danger');
@@ -687,53 +665,57 @@ jQuery(document).ready(function($) {
         }
     }
     
+    // Обновление цены крипто
+    $(document).on('change', '#crypto-period-select', function() {
+        updateCryptoPrice();
+    });
+    
+    function updateCryptoPrice() {
+        var selectedOption = $('#crypto-period-select option:selected');
+        var price = parseFloat(selectedOption.attr('data-price')) || 199;
+        
+        $('#crypto-selected-price').text(price.toFixed(2));
+        $('#crypto-amount').text(price.toFixed(2));
+        $('#crypto_price').val(price);
+    }
+    
+    // Копирование адреса
+    window.copyAddress = function() {
+        var copyText = document.getElementById("crypto-address");
+        if(copyText) {
+            copyText.select();
+            copyText.setSelectionRange(0, 99999);
+            document.execCommand("copy");
+            alert("Адрес скопирован: " + copyText.value);
+        }
+    }
+    
     // Закрытие модальных окон
-    $('.close, .cancel-btn').on('click', function() {
+    $(document).on('click', '.close, .cancel-btn', function() {
         $('.modal').fadeOut();
     });
     
     // Клик вне модального окна
-    $(window).on('click', function(e) {
+    $(document).on('click', function(e) {
         if($(e.target).hasClass('modal')) {
             $('.modal').fadeOut();
         }
     });
     
-    // Отправка формы управления подпиской
-    $('#subscription-form').on('submit', function(e) {
-        e.preventDefault();
-        
-        var formData = $(this).serialize();
-        formData += '&action=update_subscription&nonce=<?php echo wp_create_nonce("dashboard_nonce"); ?>';
-        
-        $.ajax({
-            url: window.location.href,
-            type: 'POST',
-            data: formData,
-            success: function(response) {
-                if(response.code === 200) {
-                    alert('Подписка успешно обновлена!');
-                    location.reload();
-                } else {
-                    alert('Ошибка при обновлении подписки');
-                }
-            }
-        });
-    });
-    
-    // Отправка формы покупки за баланс
+    // Отправка форм
     $('#buy-balance-form').on('submit', function(e) {
         e.preventDefault();
+        console.log('Buy balance form submitted');
         
         var selectedOption = $('#period-select option:selected');
-        var price = parseFloat(selectedOption.data('price'));
+        var price = parseFloat(selectedOption.attr('data-price')) || 199;
         
         var formData = $(this).serialize();
         formData += '&price=' + price;
         formData += '&action=buy_with_balance&nonce=<?php echo wp_create_nonce("dashboard_nonce"); ?>';
         
         $.ajax({
-            url: window.location.href,
+            url: '<?php echo admin_url("admin-ajax.php"); ?>',
             type: 'POST',
             data: formData,
             dataType: 'json',
@@ -745,21 +727,49 @@ jQuery(document).ready(function($) {
                     alert(response.data || 'Произошла ошибка');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('AJAX error:', status, error);
                 alert('Произошла ошибка при обработке запроса');
             }
         });
     });
     
-    // Обновление профиля
-    $('#profile-form').on('submit', function(e) {
+    $('#crypto-payment-form').on('submit', function(e) {
         e.preventDefault();
+        console.log('Crypto payment form submitted');
         
         var formData = $(this).serialize();
-        formData += '&action=update_profile&nonce=<?php echo wp_create_nonce("dashboard_nonce"); ?>';
+        formData += '&action=submit_crypto_payment&nonce=<?php echo wp_create_nonce("dashboard_nonce"); ?>';
         
         $.ajax({
-            url: window.location.href,
+            url: '<?php echo admin_url("admin-ajax.php"); ?>',
+            type: 'POST',
+            data: formData,
+            dataType: 'json',
+            success: function(response) {
+                if(response.success) {
+                    alert(response.data);
+                    window.location.href = '<?php echo home_url("/dashboard?payment_sent=1"); ?>';
+                } else {
+                    alert(response.data || 'Произошла ошибка');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX error:', status, error);
+                alert('Произошла ошибка при обработке запроса');
+            }
+        });
+    });
+    
+    $('#profile-form').on('submit', function(e) {
+        e.preventDefault();
+        console.log('Profile form submitted');
+        
+        var formData = $(this).serialize();
+        formData += '&action=update_user_profile&nonce=<?php echo wp_create_nonce("dashboard_nonce"); ?>';
+        
+        $.ajax({
+            url: '<?php echo admin_url("admin-ajax.php"); ?>',
             type: 'POST',
             data: formData,
             dataType: 'json',
@@ -769,9 +779,18 @@ jQuery(document).ready(function($) {
                 } else {
                     alert('Ошибка при обновлении профиля');
                 }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX error:', status, error);
+                alert('Ошибка при обработке запроса');
             }
         });
     });
+    
+    // Проверка загрузки элементов
+    console.log('Dashboard menu items:', $('.dashboard-menu a[data-tab]').length);
+    console.log('Subscription cards:', $('.subscription-card').length);
+    console.log('Buy buttons:', $('.buy-with-balance, .buy-with-crypto').length);
 });
 </script>
 
@@ -801,151 +820,121 @@ jQuery(document).ready(function($) {
     gap: 10px;
 }
 
-.balance-main-card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 40px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-}
-
-.balance-amount-large {
-    font-size: 48px;
-    font-weight: 700;
-    color: #333;
-    margin-bottom: 10px;
-}
-
-.balance-amount-large span {
-    font-size: 24px;
-    font-weight: 400;
-}
-
-.balance-actions {
-    margin-top: 30px;
-}
-
-.dashboard-table {
-    width: 100%;
-    background: #fff;
+.subscription-card {
+    border: 1px solid #e0e0e0;
     border-radius: 8px;
-    overflow: hidden;
+    padding: 20px;
+    transition: all 0.3s ease;
 }
 
-.dashboard-table th {
-    background: #f5f7fa;
-    padding: 15px;
-    font-weight: 600;
-    text-align: left;
+.subscription-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
 }
 
-.dashboard-table td {
-    padding: 15px;
+.subscription-card.active {
+    border-color: #4caf50;
+    background: #f8fdf9;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.card-header h4 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: #fff;
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 5px 30px rgba(0,0,0,0.3);
+    animation: modalFadeIn 0.3s ease;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
     border-bottom: 1px solid #eee;
 }
 
-.amount-plus {
-    color: #4caf50;
-    font-weight: 600;
+.modal-body {
+    padding: 30px;
 }
 
-.amount-minus {
-    color: #f44336;
-    font-weight: 600;
+.close {
+    color: #aaa;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
 }
 
-.status-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 500;
+.close:hover {
+    color: #000;
 }
 
-.status-pending {
-    background: #fff3cd;
-    color: #856404;
+.crypto-info-box {
+    background: #f0f8ff;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    border: 1px solid #d0e5ff;
 }
 
-.status-success,
-.status-completed {
-    background: #d4edda;
-    color: #155724;
-}
-
-.status-danger,
-.status-rejected {
-    background: #f8d7da;
-    color: #721c24;
-}
-
-.card-actions {
+.wallet-address {
     display: flex;
-    flex-direction: column;
     gap: 10px;
+    margin: 15px 0;
+}
+
+.wallet-address input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.copy-btn {
+    padding: 10px 15px;
+    background: #1a73e8;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
 }
 
 .theme-btn.btn-outline {
     background: transparent;
     border: 2px solid #1a73e8;
-    color: #1a73e8;
+    color: #1a73e8!important;
 }
 
 .theme-btn.btn-outline:hover {
     background: #1a73e8;
-    color: #fff;
-}
-
-.link-btn {
-    text-align: center;
-    color: #1a73e8;
-    text-decoration: none;
-    font-size: 14px;
-}
-
-.link-btn:hover {
-    text-decoration: underline;
-}
-
-.price-display {
-    font-size: 24px;
-    font-weight: 700;
-    color: #333;
-}
-
-.balance-info-modal {
-    background: #f5f7fa;
-    padding: 15px;
-    border-radius: 8px;
-    margin: 20px 0;
-}
-
-.balance-info-modal p {
-    margin: 5px 0;
-}
-
-#balance-after.text-danger {
-    color: #dc3545 !important;
-}
-
-.alert {
-    padding: 15px 20px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.alert-info {
-    background: #d1ecf1;
-    color: #0c5460;
-    border: 1px solid #bee5eb;
-}
-
-.alert-success {
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+    color: #fff!important;
 }
 </style>
 

@@ -2,11 +2,27 @@
 
 class FXForTrader_Main_Menu_Walker extends Walker_Nav_Menu {
     
+    function start_lvl(&$output, $depth = 0, $args = null) {
+        $indent = str_repeat("\t", $depth);
+        $output .= "\n$indent<ul class=\"dropdown\">\n";
+    }
+    
+    function end_lvl(&$output, $depth = 0, $args = null) {
+        $indent = str_repeat("\t", $depth);
+        $output .= "$indent</ul>\n";
+    }
+    
     function start_el(&$output, $item, $depth = 0, $args = null, $id = 0) {
         $indent = ($depth) ? str_repeat("\t", $depth) : '';
         
         $classes = empty($item->classes) ? array() : (array) $item->classes;
         $classes[] = 'menu-item-' . $item->ID;
+        
+        // Проверяем, есть ли дочерние элементы
+        $has_children = in_array('menu-item-has-children', $classes);
+        if($has_children && $depth === 0) {
+            $classes[] = 'dropdown';
+        }
         
         $class_names = join(' ', apply_filters('nav_menu_css_class', array_filter($classes), $item, $args));
         $class_names = $class_names ? ' class="' . esc_attr($class_names) . '"' : '';
@@ -28,5 +44,9 @@ class FXForTrader_Main_Menu_Walker extends Walker_Nav_Menu {
         $item_output .= $args->after;
         
         $output .= apply_filters('walker_nav_menu_start_el', $item_output, $item, $depth, $args);
+    }
+    
+    function end_el(&$output, $item, $depth = 0, $args = null) {
+        $output .= "</li>\n";
     }
 }

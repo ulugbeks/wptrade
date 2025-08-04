@@ -2,13 +2,22 @@
 // Получаем список платежей
 global $wpdb;
 $status = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : 'pending';
+$user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 
 $query = "SELECT p.*, u.display_name, u.user_email 
           FROM {$wpdb->prefix}volumefx_payments p
           LEFT JOIN {$wpdb->users} u ON p.user_id = u.ID";
 
+$where = array();
 if($status !== 'all') {
-    $query .= $wpdb->prepare(" WHERE p.status = %s", $status);
+    $where[] = $wpdb->prepare("p.status = %s", $status);
+}
+if($user_id) {
+    $where[] = $wpdb->prepare("p.user_id = %d", $user_id);
+}
+
+if(!empty($where)) {
+    $query .= " WHERE " . implode(" AND ", $where);
 }
 
 $query .= " ORDER BY p.created_at DESC";
@@ -34,7 +43,7 @@ $payments = $wpdb->get_results($query);
                 <th>Тип</th>
                 <th>Сумма</th>
                 <th>Крипто</th>
-                <th>Hash</th>
+                <th>Hash / Детали</th>
                 <th>Статус</th>
                 <th>Дата</th>
                 <th>Действия</th>
@@ -59,12 +68,22 @@ $payments = $wpdb->get_results($query);
                     ?>
                 </td>
                 <td><?php echo $payment->amount; ?> <?php echo $payment->currency; ?></td>
-                <td><?php echo $payment->crypto_amount; ?></td>
+                <td><?php echo $payment->crypto_amount ?: '-'; ?></td>
                 <td>
-                    <?php if($payment->transaction_hash): ?>
-                        <code style="font-size: 11px;"><?php echo substr($payment->transaction_hash, 0, 20); ?>...</code>
+                    <?php if($payment->type === 'balance'): ?>
+                        <code style="font-size: 11px;"><?php echo $payment->transaction_hash ? substr($payment->transaction_hash, 0, 20) . '...' : '-'; ?></code>
                     <?php else: ?>
-                        -
+                        <code style="font-size: 11px;"><?php echo $payment->transaction_hash ? substr($payment->transaction_hash, 0, 20) . '...' : '-'; ?></code>
+                        <?php 
+                        $account = get_post_meta($payment->product_id, 'payment_account_' . $payment->id, true);
+                        $period = get_post_meta($payment->product_id, 'payment_period_' . $payment->id, true);
+                        if($account || $period): 
+                        ?>
+                        <br><small>
+                            <?php if($account): ?>Счет: <?php echo esc_html($account); ?><br><?php endif; ?>
+                            <?php if($period): ?>Период: <?php echo $period; ?> дней<?php endif; ?>
+                        </small>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </td>
                 <td>
@@ -144,6 +163,8 @@ jQuery(document).ready(function($) {
             if(response.success) {
                 alert(response.data);
                 location.reload();
+            } else {
+                alert('Ошибка: ' + response.data);
             }
         });
     });

@@ -42,18 +42,15 @@
                 <div class="animation-preloader">
                     <div class="spinner"></div>
                     <div class="txt-loading">
+                        <span data-text-preloader="V" class="letters-loading">V</span>
+                        <span data-text-preloader="O" class="letters-loading">O</span>
+                        <span data-text-preloader="L" class="letters-loading">L</span>
+                        <span data-text-preloader="U" class="letters-loading">U</span>
+                        <span data-text-preloader="M" class="letters-loading">M</span>
+                        <span data-text-preloader="E" class="letters-loading">E</span>
+                        <br class="d-block d-sm-none">
                         <span data-text-preloader="F" class="letters-loading">F</span>
                         <span data-text-preloader="X" class="letters-loading">X</span>
-                        <span data-text-preloader="F" class="letters-loading">F</span>
-                        <span data-text-preloader="O" class="letters-loading">O</span>
-                        <span data-text-preloader="R" class="letters-loading">R</span>
-                        <br class="d-block d-sm-none">
-                        <span data-text-preloader="T" class="letters-loading">T</span>
-                        <span data-text-preloader="R" class="letters-loading">R</span>
-                        <span data-text-preloader="A" class="letters-loading">A</span>
-                        <span data-text-preloader="D" class="letters-loading">D</span>
-                        <span data-text-preloader="E" class="letters-loading">E</span>
-                        <span data-text-preloader="R" class="letters-loading">R</span>
                     </div>
                 </div>
             </div>
@@ -74,7 +71,7 @@
                             if($logo): ?>
                                 <img src="<?php echo esc_url($logo['url']); ?>" alt="<?php bloginfo('name'); ?>">
                             <?php else: ?>
-                                <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo.png" alt="<?php bloginfo('name'); ?>">
+                                <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo-fx.png" width="200" alt="<?php bloginfo('name'); ?>">
                             <?php endif; ?>
                         </a>
                     </figure>
@@ -124,7 +121,7 @@
                             if($logo): ?>
                                 <img src="<?php echo esc_url($logo['url']); ?>" alt="<?php bloginfo('name'); ?>">
                             <?php else: ?>
-                                <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo.png" alt="<?php bloginfo('name'); ?>">
+                                <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo-fx.png" width="200" alt="<?php bloginfo('name'); ?>">
                             <?php endif; ?>
                         </a>
                     </figure>
@@ -151,7 +148,7 @@
                     if($logo): ?>
                         <img src="<?php echo esc_url($logo['url']); ?>" alt="<?php bloginfo('name'); ?>">
                     <?php else: ?>
-                        <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo.png" alt="<?php bloginfo('name'); ?>">
+                        <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo-fx.png" alt="<?php bloginfo('name'); ?>">
                     <?php endif; ?>
                 </a>
             </div>

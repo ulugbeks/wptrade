@@ -15,9 +15,10 @@ class VolumeFX_Payments {
                 'type' => $data['type'],
                 'product_id' => $data['product_id'] ?? null,
                 'amount' => $data['amount'],
-                'currency' => $data['currency'] ?? 'RUB',
+                'currency' => $data['currency'] ?? 'USD',
                 'crypto_amount' => $data['crypto_amount'] ?? null,
-                'status' => 'pending'
+                'transaction_hash' => $data['transaction_hash'] ?? null,
+                'status' => $data['status'] ?? 'pending'
             )
         );
         
@@ -34,7 +35,8 @@ class VolumeFX_Payments {
             $wpdb->prefix . 'volumefx_payments',
             array(
                 'status' => $status,
-                'admin_note' => $admin_note
+                'admin_note' => $admin_note,
+                'updated_at' => current_time('mysql')
             ),
             array('id' => $payment_id)
         );
@@ -46,9 +48,6 @@ class VolumeFX_Payments {
             if($payment->type === 'balance') {
                 // Пополнение баланса
                 self::add_user_balance($payment->user_id, $payment->amount);
-            } elseif($payment->type === 'subscription') {
-                // Активация подписки
-                self::activate_subscription($payment);
             }
         }
     }
@@ -180,5 +179,24 @@ class VolumeFX_Payments {
         }
         
         return false;
+    }
+    
+    /**
+     * Получить статистику платежей
+     */
+    public static function get_payments_stats() {
+        global $wpdb;
+        
+        $stats = $wpdb->get_row("
+            SELECT 
+                COUNT(*) as total_payments,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
+                SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) as total_revenue
+            FROM {$wpdb->prefix}volumefx_payments
+        ");
+        
+        return $stats;
     }
 }

@@ -897,7 +897,7 @@
 
  .nice-select:before {
    position: absolute;
-   content: '\e914';
+   content: '↓';
    font-family: 'icomoon';
    font-size: 7px;
    top: 0px;
@@ -1885,4 +1885,9 @@
   .subscriptions-grid {
       grid-template-columns: 1fr;
   }
+}
+
+
+.sticky-header.fixed-header.animated.slideInDown .main-menu div:nth-child(2) {
+	display: none;
 }

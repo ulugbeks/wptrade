@@ -123,7 +123,7 @@
 
 .education-details-content .accordion .acc-btn:before{
   position: absolute;
-  content: '\e91c';
+  content: '↓';
   font-family: 'icomoon';
   font-size: 7px;
   top: 20px;
@@ -260,9 +260,9 @@
   color: var(--title-color);
 }
 
-.education-sidebar .share-option li a:hover{
+/* .education-sidebar .share-option li a:hover{
 
-}
+} */
 
 .education-sidebar .share-option li span{
   position: relative;
@@ -398,3 +398,4 @@
   cursor: pointer;
   margin-bottom: 0 !important;
 }
+

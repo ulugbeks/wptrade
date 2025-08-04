@@ -25,6 +25,7 @@ function fxfortrader_scripts() {
     wp_enqueue_style('fxfortrader-account', get_template_directory_uri() . '/assets/css/module-css/account.css');
     wp_enqueue_style('fxfortrader-about', get_template_directory_uri() . '/assets/css/module-css/about.css');
     wp_enqueue_style('fxfortrader-news', get_template_directory_uri() . '/assets/css/module-css/news.css');
+    wp_enqueue_style('fxfortrader-pagetitle', get_template_directory_uri() . '/assets/css/module-css/page-title.css');
     wp_enqueue_style('fxfortrader-footer', get_template_directory_uri() . '/assets/css/module-css/footer.css');
     wp_enqueue_style('fxfortrader-responsive', get_template_directory_uri() . '/assets/css/responsive.css');
     
@@ -39,7 +40,8 @@ function fxfortrader_scripts() {
     wp_enqueue_script('fxfortrader-nice-select', get_template_directory_uri() . '/assets/js/jquery.nice-select.min.js', array('jquery'), '', true);
     wp_enqueue_script('fxfortrader-scrolltop', get_template_directory_uri() . '/assets/js/scrolltop.min.js', array('jquery'), '', true);
     wp_enqueue_script('fxfortrader-odometer', get_template_directory_uri() . '/assets/js/odometer.js', array('jquery'), '', true);
-    wp_enqueue_script('fxfortrader-main', get_template_directory_uri() . '/assets/js/script.js', array('jquery'), '', true);
+    wp_enqueue_script('fxfortrader-script', get_template_directory_uri() . '/assets/js/script.js', array('jquery'), '', true);
+    wp_enqueue_script('fxfortrader-main', get_template_directory_uri() . '/assets/js/main.js', array('jquery'), '', true);
 }
 add_action('wp_enqueue_scripts', 'fxfortrader_scripts');
 
@@ -54,6 +56,9 @@ require get_template_directory() . '/inc/theme-options.php';
 require get_template_directory() . '/inc/class-volumefx-install.php';
 require get_template_directory() . '/inc/class-latrade-api.php';
 require get_template_directory() . '/inc/class-volumefx-payments.php';
+
+// Подключаем админ панель
+require get_template_directory() . '/admin/class-volumefx-admin.php';
 
 register_activation_hook(__FILE__, array('VolumeFX_Install', 'install'));
 
@@ -176,6 +181,17 @@ function fxfortrader_create_auth_pages() {
             ));
         }
     }
+    
+    // Страница пополнения баланса
+    if (!get_page_by_path('balance-topup')) {
+        wp_insert_post(array(
+            'post_title' => 'Пополнение баланса',
+            'post_name' => 'balance-topup',
+            'post_status' => 'publish',
+            'post_type' => 'page',
+            'page_template' => 'page-balance-topup.php',
+        ));
+    }
 }
 
 // Кастомизация email при регистрации
@@ -223,20 +239,153 @@ function fxfortrader_flush_rewrite_rules() {
 // Добавляем поле для indicator slug в продукты
 add_action('acf/init', 'volumefx_add_indicator_field');
 function volumefx_add_indicator_field() {
-    if(function_exists('acf_add_local_field')) {
-        acf_add_local_field(array(
-            'key' => 'field_product_indicator_slug',
-            'label' => 'Slug индикатора для API',
-            'name' => 'product_indicator_slug',
-            'type' => 'select',
-            'parent' => 'group_products',
-            'choices' => array(
-                'volatility_levels' => 'Volatility Levels',
-                'fibo_musang' => 'Fibo Musang',
-                'future_volume' => 'Future Volume',
-                'options_fx' => 'Options FX',
+    if(function_exists('acf_add_local_field_group')) {
+        // Группа полей для продуктов
+        acf_add_local_field_group(array(
+            'key' => 'group_products',
+            'title' => 'Настройки продукта',
+            'fields' => array(
+                array(
+                    'key' => 'field_product_indicator_slug',
+                    'label' => 'Slug индикатора для API',
+                    'name' => 'product_indicator_slug',
+                    'type' => 'select',
+                    'required' => 1,
+                    'choices' => array(
+                        'volatility_levels' => 'Volatility Levels',
+                        'fibo_musang' => 'Fibo Musang',
+                        'future_volume' => 'Future Volume',
+                        'options_fx' => 'Options FX',
+                    ),
+                ),
+                array(
+                    'key' => 'field_product_price_options',
+                    'label' => 'Варианты цен',
+                    'name' => 'product_price_options',
+                    'type' => 'repeater',
+                    'required' => 1,
+                    'layout' => 'table',
+                    'sub_fields' => array(
+                        array(
+                            'key' => 'field_price_period',
+                            'label' => 'Период',
+                            'name' => 'price_period',
+                            'type' => 'text',
+                            'default_value' => '1 месяц',
+                        ),
+                        array(
+                            'key' => 'field_price_amount',
+                            'label' => 'Цена',
+                            'name' => 'price_amount',
+                            'type' => 'number',
+                            'default_value' => 199,
+                            'min' => 0,
+                        ),
+                    ),
+                ),
+            ),
+            'location' => array(
+                array(
+                    array(
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'product',
+                    ),
+                ),
             ),
         ));
+    }
+}
+
+// AJAX обработчики для личного кабинета
+add_action('wp_ajax_buy_with_balance', 'volumefx_ajax_buy_with_balance');
+function volumefx_ajax_buy_with_balance() {
+    check_ajax_referer('dashboard_nonce', 'nonce');
+    
+    $user_id = get_current_user_id();
+    if(!$user_id) {
+        wp_send_json_error('Необходима авторизация');
+    }
+    
+    $product_id = intval($_POST['product_id']);
+    $price = floatval($_POST['price']);
+    $account_number = sanitize_text_field($_POST['account_number']);
+    $period = intval($_POST['period']);
+    
+    $user_balance = VolumeFX_Payments::get_user_balance($user_id);
+    
+    if ($user_balance >= $price) {
+        // Списываем с баланса
+        if (VolumeFX_Payments::deduct_balance($user_id, $price)) {
+            // Создаем запись о платеже
+            $payment_id = VolumeFX_Payments::create_payment(array(
+                'user_id' => $user_id,
+                'type' => 'subscription',
+                'product_id' => $product_id,
+                'amount' => $price,
+                'status' => 'completed'
+            ));
+            
+            // Сохраняем данные для активации
+            update_post_meta($product_id, 'payment_account_' . $payment_id, $account_number);
+            update_post_meta($product_id, 'payment_period_' . $payment_id, $period);
+            
+            // Активируем подписку через API
+            $api = new LaTradeAPI();
+            $indicator_slug = get_field('product_indicator_slug', $product_id);
+            $indicator_id = $api->getIndicatorId($indicator_slug);
+            
+            if ($indicator_id) {
+                $end_date = date('Y-m-d', strtotime("+{$period} days"));
+                
+                $result = $api->updateUserSubscription(
+                    $user_id,
+                    $indicator_id,
+                    $account_number,
+                    $end_date
+                );
+                
+                wp_send_json_success('Подписка успешно активирована');
+            }
+        } else {
+            wp_send_json_error('Недостаточно средств на балансе');
+        }
+    } else {
+        wp_send_json_error('Недостаточно средств на балансе');
+    }
+}
+
+add_action('wp_ajax_submit_crypto_payment', 'volumefx_ajax_submit_crypto_payment');
+function volumefx_ajax_submit_crypto_payment() {
+    check_ajax_referer('dashboard_nonce', 'nonce');
+    
+    $user_id = get_current_user_id();
+    if(!$user_id) {
+        wp_send_json_error('Необходима авторизация');
+    }
+    
+    $payment_data = array(
+        'user_id' => $user_id,
+        'type' => 'subscription',
+        'product_id' => intval($_POST['product_id']),
+        'amount' => floatval($_POST['price']),
+        'crypto_amount' => floatval($_POST['price']) . ' USDT',
+        'transaction_hash' => sanitize_text_field($_POST['transaction_hash'])
+    );
+    
+    $payment_id = VolumeFX_Payments::create_payment($payment_data);
+    
+    if($payment_id) {
+        // Сохраняем данные для будущей активации
+        update_post_meta($payment_data['product_id'], 'payment_account_' . $payment_id, sanitize_text_field($_POST['account_number']));
+        update_post_meta($payment_data['product_id'], 'payment_period_' . $payment_id, intval($_POST['period']));
+        
+        // Отправляем уведомление админу
+        volumefx_notify_admin_new_payment($payment_id);
+        
+        wp_send_json_success('Платеж отправлен на проверку. Администратор проверит его в ближайшее время.');
+    } else {
+        wp_send_json_error('Ошибка при создании платежа');
     }
 }
 
@@ -374,4 +523,86 @@ function volumefx_notify_user_payment_approved($payment) {
     wp_mail($user->user_email, $subject, $message);
 }
 
+// Уведомление пользователю об отклонении
+function volumefx_notify_user_payment_rejected($payment) {
+    $user = get_userdata($payment->user_id);
+    
+    $subject = 'Ваш платеж отклонен';
+    $message = sprintf(
+        "Здравствуйте, %s!\n\n" .
+        "Ваш платеж #%d на сумму %s %s был отклонен.\n\n" .
+        "Причина: %s\n\n" .
+        "Если у вас есть вопросы, пожалуйста, свяжитесь с поддержкой.",
+        $user->display_name,
+        $payment->id,
+        $payment->amount,
+        $payment->currency,
+        $payment->admin_note ?: 'Не указана'
+    );
+    
+    wp_mail($user->user_email, $subject, $message);
+}
 
+// AJAX обработчик для управления подписками пользователя (админ)
+add_action('wp_ajax_admin_manage_user_subscription', 'volumefx_admin_manage_user_subscription');
+function volumefx_admin_manage_user_subscription() {
+    check_ajax_referer('volumefx_admin_nonce', 'nonce');
+    
+    if(!current_user_can('manage_options')) {
+        wp_send_json_error('Недостаточно прав');
+    }
+    
+    $user_id = intval($_POST['user_id']);
+    $indicator_id = intval($_POST['indicator_id']);
+    $account_number = sanitize_text_field($_POST['account_number']);
+    $date_end = sanitize_text_field($_POST['date_end']);
+    $balance_change = floatval($_POST['balance_change']);
+    $admin_note = sanitize_textarea_field($_POST['admin_note']);
+    
+    $success = true;
+    $messages = array();
+    
+    // Обновляем подписку через API
+    if($indicator_id && $account_number && $date_end) {
+        $api = new LaTradeAPI();
+        $result = $api->updateUserSubscription($user_id, $indicator_id, $account_number, $date_end);
+        
+        if($result && $result['code'] == 200) {
+            $messages[] = 'Подписка успешно обновлена';
+        } else {
+            $success = false;
+            $messages[] = 'Ошибка при обновлении подписки через API';
+        }
+    }
+    
+    // Изменяем баланс
+    if($balance_change != 0) {
+        if($balance_change > 0) {
+            VolumeFX_Payments::add_user_balance($user_id, $balance_change);
+            $messages[] = 'Баланс пополнен на ' . $balance_change . ' $';
+            
+            // Создаем запись о пополнении
+            VolumeFX_Payments::create_payment(array(
+                'user_id' => $user_id,
+                'type' => 'balance',
+                'amount' => $balance_change,
+                'status' => 'completed',
+                'admin_note' => 'Ручное пополнение администратором. ' . $admin_note
+            ));
+        } else {
+            $deducted = VolumeFX_Payments::deduct_balance($user_id, abs($balance_change));
+            if($deducted) {
+                $messages[] = 'С баланса списано ' . abs($balance_change) . ' $';
+            } else {
+                $success = false;
+                $messages[] = 'Недостаточно средств для списания';
+            }
+        }
+    }
+    
+    if($success) {
+        wp_send_json_success(implode('. ', $messages));
+    } else {
+        wp_send_json_error(implode('. ', $messages));
+    }
+}
