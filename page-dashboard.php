@@ -532,7 +532,7 @@ $show_activated = isset($_GET['activated']) && $_GET['activated'] == '1';
                     <h4>Оплата в USDT (TRC20)</h4>
                     <p>Отправьте <strong><span id="crypto-amount">0</span> USDT</strong> на адрес:</p>
                     <div class="wallet-address">
-                        <input type="text" id="crypto-address" value="TWVsrW7qEfFxzwt4xMVMWJwvQPn9ssTSxp" readonly>
+                        <input type="text" id="crypto-address" value="TQEQHJRLz1HUQcaJtfAgh7jWi1SiE2cpJT" readonly>
                         <button type="button" class="copy-btn" onclick="copyAddress()">
                             <i class="fas fa-copy"></i>
                         </button>

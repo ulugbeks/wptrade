@@ -120,7 +120,8 @@ while(have_posts()): the_post();
                     </ul>
                     <div class="btn-box mb_50">
                         <?php if(is_user_logged_in()): ?>
-                            <a href="<?php echo home_url('/buy?product_id=' . get_the_ID()); ?>" class="theme-btn btn-one">Купить</a>
+                            <!-- <a href="<?php echo home_url('/buy?product_id=' . get_the_ID()); ?>" class="theme-btn btn-one">Купить</a> -->
+                            <a href="/dashboard" class="theme-btn btn-one">Купить</a>
                         <?php else: ?>
                             <a href="<?php echo home_url('/auth?redirect=' . urlencode(get_permalink())); ?>" class="theme-btn btn-one">Войти для покупки</a>
                         <?php endif; ?>

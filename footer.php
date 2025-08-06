@@ -66,9 +66,9 @@ $footer_copyright = get_field('footer_copyright', 'option');
                         <figure class="footer-logo">
                             <a href="<?php echo esc_url(home_url('/')); ?>">
                                 <?php if($footer_logo): ?>
-                                    <img src="<?php echo esc_url($footer_logo['url']); ?>" alt="<?php bloginfo('name'); ?>">
+                                    <img src="<?php echo esc_url($footer_logo['url']); ?>" width="150" alt="<?php bloginfo('name'); ?>">
                                 <?php else: ?>
-                                    <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo.png" alt="<?php bloginfo('name'); ?>">
+                                    <img src="<?php echo get_template_directory_uri(); ?>/assets/images/logo.png" width="150" alt="<?php bloginfo('name'); ?>">
                                 <?php endif; ?>
                             </a>
                         </figure>

@@ -83,7 +83,13 @@ class VolumeFX_Admin {
                 // Активируем подписку через API
                 $api = new LaTradeAPI();
                 $indicator_slug = get_field('product_indicator_slug', $payment->product_id);
-                $indicator_id = $api->getIndicatorId($indicator_slug);
+                
+                // Проверяем, является ли это кастомным индикатором
+                if($indicator_slug === 'custom') {
+                    $indicator_id = 'custom_' . $payment->product_id;
+                } else {
+                    $indicator_id = $api->getIndicatorId($indicator_slug);
+                }
                 
                 if($indicator_id) {
                     $end_date = date('Y-m-d', strtotime("+{$period} days"));

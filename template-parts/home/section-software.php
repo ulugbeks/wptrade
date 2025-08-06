@@ -34,7 +34,9 @@ $products = new WP_Query($args);
                         <?php endif; ?>
                         <h3><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
                         <?php if($short_description): ?>
-                        <p><?php echo esc_html($short_description); ?></p>
+                        <p><?php echo wp_kses_post($short_description); ?></p>
+                        <?php else: ?>
+                        <p><?php echo wp_trim_words(get_the_excerpt(), 20); ?></p>
                         <?php endif; ?>
                         <div class="link"><a href="<?php the_permalink(); ?>">Подробнее</a></div>
                     </div>
