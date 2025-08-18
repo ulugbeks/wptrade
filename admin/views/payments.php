@@ -1,8 +1,10 @@
 <?php
+
 // Получаем список платежей
 global $wpdb;
 $status = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : 'pending';
 $user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
+$type_filter = isset($_GET['type']) ? sanitize_text_field($_GET['type']) : '';
 
 $query = "SELECT p.*, u.display_name, u.user_email 
           FROM {$wpdb->prefix}volumefx_payments p
@@ -15,6 +17,9 @@ if($status !== 'all') {
 if($user_id) {
     $where[] = $wpdb->prepare("p.user_id = %d", $user_id);
 }
+if($type_filter) {
+    $where[] = $wpdb->prepare("p.type = %s", $type_filter);
+}
 
 if(!empty($where)) {
     $query .= " WHERE " . implode(" AND ", $where);
@@ -26,7 +31,7 @@ $payments = $wpdb->get_results($query);
 ?>
 
 <div class="wrap">
-    <h1>Управление платежами</h1>
+    <h1>Управление платежами и заказами</h1>
     
     <ul class="subsubsub">
         <li><a href="?page=volumefx-payments&status=pending" <?php echo $status === 'pending' ? 'class="current"' : ''; ?>>Ожидающие</a> |</li>
@@ -35,14 +40,25 @@ $payments = $wpdb->get_results($query);
         <li><a href="?page=volumefx-payments&status=all" <?php echo $status === 'all' ? 'class="current"' : ''; ?>>Все</a></li>
     </ul>
     
+    <div class="tablenav top">
+        <div class="alignleft actions">
+            <select name="type_filter" onchange="window.location.href='?page=volumefx-payments&status=<?php echo $status; ?>&type=' + this.value">
+                <option value="">Все типы</option>
+                <option value="balance" <?php selected($type_filter, 'balance'); ?>>Пополнение баланса</option>
+                <option value="subscription" <?php selected($type_filter, 'subscription'); ?>>Подписки</option>
+                <option value="service" <?php selected($type_filter, 'service'); ?>>Заказы услуг</option>
+            </select>
+        </div>
+    </div>
+    
     <table class="wp-list-table widefat fixed striped">
         <thead>
             <tr>
-                <th>ID</th>
+                <th style="width: 50px;">ID</th>
                 <th>Пользователь</th>
                 <th>Тип</th>
+                <th>Описание</th>
                 <th>Сумма</th>
-                <th>Крипто</th>
                 <th>Hash / Детали</th>
                 <th>Статус</th>
                 <th>Дата</th>
@@ -54,13 +70,39 @@ $payments = $wpdb->get_results($query);
             <tr>
                 <td>#<?php echo $payment->id; ?></td>
                 <td>
-                    <strong><?php echo esc_html($payment->display_name); ?></strong><br>
-                    <small><?php echo esc_html($payment->user_email); ?></small>
+                    <?php if($payment->type === 'service'): 
+                        // Для услуг показываем данные из метаданных
+                        $client_name = get_post_meta($payment->product_id, 'order_' . $payment->id . '_client_name', true);
+                        $client_email = get_post_meta($payment->product_id, 'order_' . $payment->id . '_client_email', true);
+                    ?>
+                        <strong><?php echo esc_html($client_name ?: $payment->display_name); ?></strong><br>
+                        <small><?php echo esc_html($client_email ?: $payment->user_email); ?></small>
+                    <?php else: ?>
+                        <strong><?php echo esc_html($payment->display_name); ?></strong><br>
+                        <small><?php echo esc_html($payment->user_email); ?></small>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php 
+                    $type_labels = array(
+                        'balance' => '<span style="color: #4CAF50;">Баланс</span>',
+                        'subscription' => '<span style="color: #2196F3;">Подписка</span>',
+                        'service' => '<span style="color: #FF9800;">Услуга</span>'
+                    );
+                    echo $type_labels[$payment->type] ?? $payment->type;
+                    ?>
                 </td>
                 <td>
                     <?php 
                     if($payment->type === 'balance') {
                         echo 'Пополнение баланса';
+                    } elseif($payment->type === 'service') {
+                        $service = get_post($payment->product_id);
+                        $tariff = get_post_meta($payment->product_id, 'order_' . $payment->id . '_tariff', true);
+                        echo '<strong>' . ($service ? $service->post_title : 'N/A') . '</strong>';
+                        if($tariff) {
+                            echo '<br><small>Тариф: ' . esc_html($tariff) . '</small>';
+                        }
                     } else {
                         $product = get_post($payment->product_id);
                         echo 'Подписка: ' . ($product ? $product->post_title : 'N/A');
@@ -68,21 +110,18 @@ $payments = $wpdb->get_results($query);
                     ?>
                 </td>
                 <td><?php echo $payment->amount; ?> <?php echo $payment->currency; ?></td>
-                <td><?php echo $payment->crypto_amount ?: '-'; ?></td>
                 <td>
-                    <?php if($payment->type === 'balance'): ?>
-                        <code style="font-size: 11px;"><?php echo $payment->transaction_hash ? substr($payment->transaction_hash, 0, 20) . '...' : '-'; ?></code>
-                    <?php else: ?>
-                        <code style="font-size: 11px;"><?php echo $payment->transaction_hash ? substr($payment->transaction_hash, 0, 20) . '...' : '-'; ?></code>
-                        <?php 
-                        $account = get_post_meta($payment->product_id, 'payment_account_' . $payment->id, true);
-                        $period = get_post_meta($payment->product_id, 'payment_period_' . $payment->id, true);
-                        if($account || $period): 
-                        ?>
-                        <br><small>
-                            <?php if($account): ?>Счет: <?php echo esc_html($account); ?><br><?php endif; ?>
-                            <?php if($period): ?>Период: <?php echo $period; ?> дней<?php endif; ?>
-                        </small>
+                    <code style="font-size: 11px;"><?php echo $payment->transaction_hash ? substr($payment->transaction_hash, 0, 20) . '...' : '-'; ?></code>
+                    
+                    <?php if($payment->type === 'service'): 
+                        $phone = get_post_meta($payment->product_id, 'order_' . $payment->id . '_client_phone', true);
+                        $comment = get_post_meta($payment->product_id, 'order_' . $payment->id . '_comment', true);
+                    ?>
+                        <?php if($phone): ?>
+                            <br><small><strong>Тел:</strong> <?php echo esc_html($phone); ?></small>
+                        <?php endif; ?>
+                        <?php if($comment): ?>
+                            <br><small><strong>Комментарий:</strong> <?php echo esc_html(wp_trim_words($comment, 10)); ?></small>
                         <?php endif; ?>
                     <?php endif; ?>
                 </td>
@@ -90,7 +129,7 @@ $payments = $wpdb->get_results($query);
                     <?php
                     $status_labels = array(
                         'pending' => '<span style="color: orange;">Ожидает</span>',
-                        'completed' => '<span style="color: green;">Подтвержден</span>',
+                        'completed' => '<span style="color: green;">Выполнен</span>',
                         'rejected' => '<span style="color: red;">Отклонен</span>'
                     );
                     echo $status_labels[$payment->status] ?? $payment->status;
@@ -99,10 +138,30 @@ $payments = $wpdb->get_results($query);
                 <td><?php echo date('d.m.Y H:i', strtotime($payment->created_at)); ?></td>
                 <td>
                     <?php if($payment->status === 'pending'): ?>
-                        <button class="button button-primary approve-payment" data-id="<?php echo $payment->id; ?>">Подтвердить</button>
-                        <button class="button reject-payment" data-id="<?php echo $payment->id; ?>">Отклонить</button>
+                        <button class="button button-primary approve-payment" 
+                                data-id="<?php echo $payment->id; ?>"
+                                data-type="<?php echo $payment->type; ?>">
+                            Подтвердить
+                        </button>
+                        <button class="button reject-payment" 
+                                data-id="<?php echo $payment->id; ?>"
+                                data-type="<?php echo $payment->type; ?>">
+                            Отклонить
+                        </button>
                     <?php else: ?>
-                        <button class="button view-details" data-id="<?php echo $payment->id; ?>">Детали</button>
+                        <button class="button view-details" 
+                                data-id="<?php echo $payment->id; ?>"
+                                data-type="<?php echo $payment->type; ?>">
+                            Детали
+                        </button>
+                    <?php endif; ?>
+                    
+                    <?php if($payment->type === 'service'): ?>
+                        <button class="button view-service-details" 
+                                data-id="<?php echo $payment->id; ?>"
+                                data-service-id="<?php echo $payment->product_id; ?>">
+                            <span class="dashicons dashicons-visibility"></span>
+                        </button>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -118,6 +177,7 @@ $payments = $wpdb->get_results($query);
         <form id="payment-action-form">
             <input type="hidden" id="payment-id" name="payment_id">
             <input type="hidden" id="payment-action" name="action">
+            <input type="hidden" id="payment-type" name="payment_type">
             
             <p>
                 <label>Примечание администратора:</label>
@@ -132,24 +192,60 @@ $payments = $wpdb->get_results($query);
     </div>
 </div>
 
+<!-- Модальное окно для деталей услуги -->
+<div id="service-details-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <h3>Детали заказа услуги</h3>
+        <div id="service-details-content">
+            <!-- Контент загружается через AJAX -->
+        </div>
+        <p>
+            <button type="button" class="button" onclick="tb_remove();">Закрыть</button>
+        </p>
+    </div>
+</div>
+
 <script>
 jQuery(document).ready(function($) {
     // Подтверждение платежа
     $('.approve-payment').on('click', function() {
         var paymentId = $(this).data('id');
+        var paymentType = $(this).data('type');
         $('#payment-id').val(paymentId);
+        $('#payment-type').val(paymentType);
         $('#payment-action').val('approve_payment');
-        $('#modal-title').text('Подтвердить платеж #' + paymentId);
-        tb_show('Подтвердить платеж', '#TB_inline?inlineId=payment-modal&width=400&height=300');
+        $('#modal-title').text('Подтвердить ' + (paymentType === 'service' ? 'заказ услуги' : 'платеж') + ' #' + paymentId);
+        tb_show('Подтвердить', '#TB_inline?inlineId=payment-modal&width=400&height=300');
     });
     
     // Отклонение платежа
     $('.reject-payment').on('click', function() {
         var paymentId = $(this).data('id');
+        var paymentType = $(this).data('type');
         $('#payment-id').val(paymentId);
+        $('#payment-type').val(paymentType);
         $('#payment-action').val('reject_payment');
-        $('#modal-title').text('Отклонить платеж #' + paymentId);
-        tb_show('Отклонить платеж', '#TB_inline?inlineId=payment-modal&width=400&height=300');
+        $('#modal-title').text('Отклонить ' + (paymentType === 'service' ? 'заказ услуги' : 'платеж') + ' #' + paymentId);
+        tb_show('Отклонить', '#TB_inline?inlineId=payment-modal&width=400&height=300');
+    });
+    
+    // Просмотр деталей услуги
+    $('.view-service-details').on('click', function() {
+        var paymentId = $(this).data('id');
+        var serviceId = $(this).data('service-id');
+        
+        // Загружаем детали через AJAX
+        $.post(ajaxurl, {
+            action: 'get_service_order_details',
+            payment_id: paymentId,
+            service_id: serviceId,
+            nonce: '<?php echo wp_create_nonce("admin_service_nonce"); ?>'
+        }, function(response) {
+            if(response.success) {
+                $('#service-details-content').html(response.data);
+                tb_show('Детали заказа', '#TB_inline?inlineId=service-details-modal&width=600&height=500');
+            }
+        });
     });
     
     // Отправка формы
@@ -170,3 +266,14 @@ jQuery(document).ready(function($) {
     });
 });
 </script>
+
+<style>
+.view-service-details {
+    padding: 2px 8px;
+}
+.view-service-details .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+</style>

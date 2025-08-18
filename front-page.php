@@ -25,4 +25,7 @@ get_header(); ?>
 <!-- news-section (Обучение и курсы) -->
 <?php get_template_part('template-parts/home/section', 'courses'); ?>
 
+<!-- services-section (Услуги) -->
+<?php get_template_part('template-parts/home/section', 'services'); ?>
+
 <?php get_footer(); ?>

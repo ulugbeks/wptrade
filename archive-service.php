@@ -1,7 +1,7 @@
 <?php
 /**
- * Template Name: Страница услуг
- * 
+ * The template for displaying service archive
+ *
  * @package FXForTrader
  */
 
@@ -12,10 +12,10 @@ get_header(); ?>
     <div class="pattern-layer rotate-me" style="background-image: url(<?php echo get_template_directory_uri(); ?>/assets/images/shape/shape-34.png);"></div>
     <div class="auto-container">
         <div class="content-box">
-            <h1><?php the_title(); ?></h1>
+            <h1>Наши услуги</h1>
             <ul class="bread-crumb clearfix">
                 <li><a href="<?php echo home_url(); ?>">Главная</a></li>
-                <li><?php the_title(); ?></li>
+                <li>Услуги</li>
             </ul>
         </div>
     </div>
@@ -35,48 +35,31 @@ get_header(); ?>
                 <li data-filter="support">Поддержка</li>
                 <li data-filter="development">Разработка</li>
                 <li data-filter="analytics">Аналитика</li>
-                <li data-filter="other">Другое</li>
             </ul>
         </div>
         
         <div class="row clearfix services-grid">
             <?php 
-            // Запрос для получения всех услуг
-            $args = array(
-                'post_type' => 'service',
-                'posts_per_page' => -1,
-                'orderby' => 'menu_order date',
-                'order' => 'ASC',
-            );
-            
-            $services = new WP_Query($args);
-            
-            if($services->have_posts()): 
+            if(have_posts()): 
                 $delay = 0;
-                while($services->have_posts()): $services->the_post(); 
+                while(have_posts()): the_post(); 
                     $service_type = get_field('service_type');
                     $price_options = get_field('service_price_options');
                     $short_description = get_field('service_short_description');
                     $is_featured = get_field('service_is_featured');
                     $duration = get_field('service_duration');
-                    $format = get_field('service_format');
                     
-                    // Получаем минимальную цену и информацию о первом тарифе
+                    // Получаем минимальную цену
                     $min_price = null;
-                    $price_period = '';
-                    $price_name = '';
-                    
-                    if($price_options && is_array($price_options) && !empty($price_options)) {
+                    if($price_options && is_array($price_options)) {
                         foreach($price_options as $option) {
-                            if(isset($option['price_amount']) && (!$min_price || $option['price_amount'] < $min_price)) {
+                            if(!$min_price || $option['price_amount'] < $min_price) {
                                 $min_price = $option['price_amount'];
-                                $price_period = isset($option['price_period']) ? $option['price_period'] : '';
-                                $price_name = isset($option['price_name']) ? $option['price_name'] : '';
                             }
                         }
                     }
             ?>
-            <div class="col-lg-4 col-md-6 col-sm-12 service-block" data-type="<?php echo esc_attr($service_type ?: 'other'); ?>">
+            <div class="col-lg-4 col-md-6 col-sm-12 service-block" data-type="<?php echo esc_attr($service_type); ?>">
                 <div class="service-block-one wow fadeInUp animated <?php echo $is_featured ? 'featured' : ''; ?>" 
                      data-wow-delay="<?php echo $delay; ?>ms"
                      data-wow-duration="1500ms">
@@ -91,14 +74,6 @@ get_header(); ?>
                         <div class="image-box">
                             <a href="<?php the_permalink(); ?>">
                                 <?php the_post_thumbnail('medium'); ?>
-                            </a>
-                        </div>
-                        <?php else: ?>
-                        <div class="image-box no-image">
-                            <a href="<?php the_permalink(); ?>">
-                                <div class="placeholder-image">
-                                    <i class="fas fa-concierge-bell"></i>
-                                </div>
                             </a>
                         </div>
                         <?php endif; ?>
@@ -123,55 +98,20 @@ get_header(); ?>
                             
                             <?php if($short_description): ?>
                             <p><?php echo esc_html($short_description); ?></p>
-                            <?php else: ?>
-                            <p><?php echo wp_trim_words(get_the_excerpt() ?: get_the_content(), 20); ?></p>
                             <?php endif; ?>
                             
                             <div class="service-meta">
-                                <div class="meta-left">
-                                    <?php if($min_price !== null): ?>
-                                    <div class="price">
-                                        <span class="amount"><?php echo number_format($min_price, 0, '.', ' '); ?> $</span>
-                                        <?php if($price_period): ?>
-                                        <span class="period">/ <?php echo esc_html($price_period); ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                    <?php if($price_name): ?>
-                                    <div class="price-name"><?php echo esc_html($price_name); ?></div>
-                                    <?php endif; ?>
-                                    <?php else: ?>
-                                    <div class="price">
-                                        <span class="contact-price">Цена по запросу</span>
-                                    </div>
-                                    <?php endif; ?>
+                                <?php if($min_price): ?>
+                                <div class="price">
+                                    от <span><?php echo number_format($min_price); ?> $</span>
                                 </div>
+                                <?php endif; ?>
                                 
-                                <div class="meta-right">
-                                    <?php if($duration): ?>
-                                    <div class="duration">
-                                        <i class="fas fa-clock"></i> <?php echo esc_html($duration); ?>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                    <?php if($format && is_array($format) && !empty($format)): ?>
-                                    <div class="format">
-                                        <i class="fas fa-laptop"></i> 
-                                        <?php 
-                                        $format_labels = array(
-                                            'online' => 'Онлайн',
-                                            'offline' => 'Офлайн',
-                                            'remote' => 'Удаленно',
-                                            'onsite' => 'У клиента'
-                                        );
-                                        $formatted = array();
-                                        foreach($format as $f) {
-                                            $formatted[] = isset($format_labels[$f]) ? $format_labels[$f] : $f;
-                                        }
-                                        echo esc_html(implode(', ', $formatted));
-                                        ?>
-                                    </div>
-                                    <?php endif; ?>
+                                <?php if($duration): ?>
+                                <div class="duration">
+                                    <i class="fas fa-clock"></i> <?php echo esc_html($duration); ?>
                                 </div>
+                                <?php endif; ?>
                             </div>
                             
                             <div class="link">
@@ -183,19 +123,18 @@ get_header(); ?>
             </div>
             <?php 
                 $delay += 100;
-                endwhile;
-                wp_reset_postdata();
+                endwhile; 
             else:
             ?>
             <div class="col-12">
-                <div class="empty-state">
-                    <i class="fas fa-concierge-bell"></i>
-                    <h3>Услуги пока не добавлены</h3>
-                    <p>Скоро здесь появятся наши услуги. Следите за обновлениями!</p>
-                </div>
+                <p class="text-center">Услуги не найдены.</p>
             </div>
             <?php endif; ?>
         </div>
+        
+        <?php if(function_exists('wp_pagenavi')): ?>
+            <?php wp_pagenavi(); ?>
+        <?php endif; ?>
     </div>
 </section>
 <!-- services-section end -->
@@ -203,7 +142,6 @@ get_header(); ?>
 <style>
 .services-filter {
     text-align: center;
-    margin-bottom: 50px;
 }
 
 .filter-tabs {
@@ -213,7 +151,6 @@ get_header(); ?>
     list-style: none;
     padding: 0;
     margin: 0;
-    justify-content: center;
 }
 
 .filter-tabs li {
@@ -233,7 +170,6 @@ get_header(); ?>
 
 .service-block {
     transition: all 0.3s ease;
-    margin-bottom: 30px;
 }
 
 .service-block.hidden {
@@ -248,8 +184,6 @@ get_header(); ?>
     box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     transition: all 0.3s ease;
     height: 100%;
-    display: flex;
-    flex-direction: column;
 }
 
 .service-block-one:hover {
@@ -281,19 +215,6 @@ get_header(); ?>
     position: relative;
     overflow: hidden;
     height: 200px;
-    background: #f8f9fa;
-}
-
-.service-block-one .image-box.no-image {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.placeholder-image {
-    font-size: 60px;
-    color: rgba(255,255,255,0.8);
 }
 
 .service-block-one .image-box img {
@@ -309,9 +230,6 @@ get_header(); ?>
 
 .service-block-one .lower-content {
     padding: 25px;
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
 }
 
 .service-type {
@@ -323,13 +241,11 @@ get_header(); ?>
     font-size: 12px;
     font-weight: 500;
     margin-bottom: 15px;
-    align-self: flex-start;
 }
 
 .service-block-one h3 {
     font-size: 20px;
     margin-bottom: 15px;
-    line-height: 1.4;
 }
 
 .service-block-one h3 a {
@@ -341,76 +257,39 @@ get_header(); ?>
     color: #1a73e8;
 }
 
-.service-block-one p {
-    color: #666;
-    line-height: 1.6;
-    margin-bottom: 20px;
-    flex-grow: 1;
-}
-
 .service-meta {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     margin: 20px 0;
     padding: 15px 0;
     border-top: 1px solid #eee;
     border-bottom: 1px solid #eee;
-    min-height: 60px;
-}
-
-.meta-left {
-    flex: 1;
-}
-
-.meta-right {
-    flex: 1;
-    text-align: right;
 }
 
 .service-meta .price {
-    margin-bottom: 5px;
+    font-size: 14px;
+    color: #666;
 }
 
-.service-meta .price .amount {
-    font-size: 24px;
+.service-meta .price span {
+    font-size: 20px;
     font-weight: 700;
     color: #1a73e8;
 }
 
-.service-meta .price .period {
-    font-size: 14px;
-    color: #666;
-    font-weight: normal;
-}
-
-.service-meta .price-name {
-    font-size: 12px;
-    color: #999;
-    font-style: italic;
-}
-
-.service-meta .contact-price {
-    font-size: 16px;
-    color: #666;
-    font-style: italic;
-}
-
-.service-meta .duration,
-.service-meta .format {
+.service-meta .duration {
     color: #666;
     font-size: 14px;
-    margin-bottom: 5px;
 }
 
-.service-meta .duration i,
-.service-meta .format i {
+.service-meta .duration i {
     color: #1a73e8;
     margin-right: 5px;
 }
 
 .service-block-one .link {
-    margin-top: auto;
+    margin-top: 20px;
 }
 
 .service-block-one .link a {
@@ -424,45 +303,6 @@ get_header(); ?>
 
 .service-block-one .link a:hover {
     gap: 10px;
-}
-
-/* Пустое состояние */
-.empty-state {
-    text-align: center;
-    padding: 60px 20px;
-}
-
-.empty-state i {
-    font-size: 80px;
-    color: #e0e0e0;
-    margin-bottom: 20px;
-}
-
-.empty-state h3 {
-    color: #666;
-    margin-bottom: 10px;
-}
-
-.empty-state p {
-    color: #999;
-}
-
-/* Адаптивность */
-@media (max-width: 768px) {
-    .service-meta {
-        flex-direction: column;
-        gap: 10px;
-    }
-    
-    .meta-right {
-        text-align: left;
-    }
-    
-    .filter-tabs {
-        justify-content: flex-start;
-        overflow-x: auto;
-        padding: 10px 0;
-    }
 }
 </style>
 

@@ -53,6 +53,20 @@ class LaTradeAPI {
     }
     
     /**
+     * Получить название индикатора по ID
+     */
+    public function getIndicatorName($id) {
+        $indicators = array(
+            1 => 'Volatility Levels',
+            2 => 'Fibo Musang',
+            3 => 'Future Volume',
+            4 => 'Options FX'
+        );
+        
+        return isset($indicators[$id]) ? $indicators[$id] : 'Unknown Indicator';
+    }
+    
+    /**
      * Выполнить запрос к API
      */
     private function makeRequest($endpoint, $method = 'GET', $data = null) {
@@ -63,6 +77,9 @@ class LaTradeAPI {
         curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
         curl_setopt($ch, CURLOPT_USERPWD, $this->username . ':' . $this->password);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Для решения проблем с SSL
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30); // Таймаут 30 секунд
         
         if ($method === 'POST' && $data) {
             curl_setopt($ch, CURLOPT_POST, true);
@@ -73,18 +90,40 @@ class LaTradeAPI {
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         
         if (curl_errno($ch)) {
-            error_log('LaTradeAPI Error: ' . curl_error($ch));
+            error_log('LaTradeAPI CURL Error: ' . curl_error($ch));
             curl_close($ch);
-            return false;
+            return array(
+                'code' => 0,
+                'data' => array('error' => curl_error($ch))
+            );
         }
         
         curl_close($ch);
         
+        // Пытаемся декодировать JSON
         $result = json_decode($response, true);
+        
+        // Если не удалось декодировать JSON, возвращаем сырой ответ
+        if ($result === null && json_last_error() !== JSON_ERROR_NONE) {
+            error_log('LaTradeAPI JSON Error: ' . json_last_error_msg());
+            error_log('LaTradeAPI Raw Response: ' . $response);
+            return array(
+                'code' => $httpCode,
+                'data' => array('raw' => $response, 'error' => 'JSON decode error')
+            );
+        }
         
         return array(
             'code' => $httpCode,
             'data' => $result
         );
+    }
+    
+    /**
+     * Проверить доступность API
+     */
+    public function testConnection() {
+        $result = $this->getInfo();
+        return $result && isset($result['code']) && $result['code'] == 200;
     }
 }
