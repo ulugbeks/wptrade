@@ -52,7 +52,6 @@ require get_template_directory() . '/inc/acf-fields.php';
 require get_template_directory() . '/inc/template-functions.php';
 require get_template_directory() . '/inc/class-menu-walker.php';
 require get_template_directory() . '/inc/theme-options.php';
-
 require get_template_directory() . '/inc/class-volumefx-install.php';
 require get_template_directory() . '/inc/class-latrade-api.php';
 require get_template_directory() . '/inc/class-volumefx-payments.php';
@@ -605,4 +604,169 @@ function volumefx_admin_manage_user_subscription() {
     } else {
         wp_send_json_error(implode('. ', $messages));
     }
+}
+
+
+
+
+// ACF поля для страницы с шаблоном "Страница услуг"
+add_action('acf/init', 'volumefx_add_service_page_fields');
+function volumefx_add_service_page_fields() {
+    if(function_exists('acf_add_local_field_group')) {
+        acf_add_local_field_group(array(
+            'key' => 'group_service_page_fields',
+            'title' => 'Настройки страницы услуг',
+            'fields' => array(
+                array(
+                    'key' => 'field_service_page_price',
+                    'label' => 'Цена услуги',
+                    'name' => 'service_page_price',
+                    'type' => 'number',
+                    'default_value' => 100,
+                    'min' => 0,
+                    'prepend' => '$',
+                    'instructions' => 'Укажите стоимость услуги в долларах',
+                ),
+                array(
+                    'key' => 'field_service_page_period',
+                    'label' => 'Период/Срок (опционально)',
+                    'name' => 'service_page_period',
+                    'type' => 'text',
+                    'placeholder' => 'Например: единоразово, 1 месяц, 1 год',
+                    'instructions' => 'Оставьте пустым, если не требуется',
+                ),
+                array(
+                    'key' => 'field_service_page_sidebar_text',
+                    'label' => 'Текст в сайдбаре',
+                    'name' => 'service_page_sidebar_text',
+                    'type' => 'wysiwyg',
+                    'toolbar' => 'basic',
+                    'media_upload' => 0,
+                    'instructions' => 'Этот текст будет отображаться в сайдбаре над кнопкой покупки',
+                ),
+            ),
+            'location' => array(
+                array(
+                    array(
+                        'param' => 'page_template',
+                        'operator' => '==',
+                        'value' => 'page-services.php',
+                    ),
+                ),
+            ),
+        ));
+    }
+}
+
+// AJAX обработчик для оплаты услуги со страницы
+add_action('wp_ajax_submit_service_page_payment', 'volumefx_ajax_submit_service_page_payment');
+function volumefx_ajax_submit_service_page_payment() {
+    check_ajax_referer('service_payment_nonce', 'nonce');
+    
+    $user_id = get_current_user_id();
+    if(!$user_id) {
+        wp_send_json_error('Необходима авторизация');
+    }
+    
+    // Создаем запись о платеже
+    $payment_data = array(
+        'user_id' => $user_id,
+        'type' => 'service',
+        'product_id' => intval($_POST['page_id']), // ID страницы
+        'amount' => floatval($_POST['amount']),
+        'crypto_amount' => floatval($_POST['amount']) . ' USDT',
+        'transaction_hash' => sanitize_text_field($_POST['transaction_hash']),
+        'status' => 'pending'
+    );
+    
+    // Используем существующий класс для создания платежа
+    $payment_id = VolumeFX_Payments::create_payment($payment_data);
+    
+    if($payment_id) {
+        // Сохраняем название услуги
+        update_post_meta($payment_data['product_id'], 'service_payment_name_' . $payment_id, sanitize_text_field($_POST['service_name']));
+        
+        // Отправляем уведомление администратору
+        volumefx_notify_admin_service_page_payment($payment_id);
+        
+        wp_send_json_success('Платеж отправлен на проверку. Администратор свяжется с вами в ближайшее время.');
+    } else {
+        wp_send_json_error('Ошибка при создании платежа. Попробуйте еще раз.');
+    }
+}
+
+// Уведомление админу о новой оплате услуги со страницы
+function volumefx_notify_admin_service_page_payment($payment_id) {
+    $payment = VolumeFX_Payments::get_payment($payment_id);
+    $user = get_userdata($payment->user_id);
+    $service_name = get_post_meta($payment->product_id, 'service_payment_name_' . $payment_id, true);
+    
+    $subject = 'Новая оплата услуги #' . $payment_id;
+    $message = sprintf(
+        "Новая оплата услуги от пользователя %s (%s)\n\n" .
+        "Услуга: %s\n" .
+        "Сумма: %s %s\n" .
+        "Крипто: %s\n" .
+        "Hash транзакции: %s\n\n" .
+        "Телефон пользователя: %s\n\n" .
+        "Перейти в админку: %s",
+        $user->display_name,
+        $user->user_email,
+        $service_name,
+        $payment->amount,
+        $payment->currency,
+        $payment->crypto_amount,
+        $payment->transaction_hash,
+        get_user_meta($user->ID, 'phone', true) ?: 'Не указан',
+        admin_url('admin.php?page=volumefx-payments&status=pending')
+    );
+    
+    wp_mail(get_option('admin_email'), $subject, $message);
+}
+
+// Добавляем глобальную настройку для адреса кошелька (если еще не добавлена)
+add_action('acf/init', 'volumefx_add_crypto_wallet_settings');
+function volumefx_add_crypto_wallet_settings() {
+    if(function_exists('acf_add_local_field_group')) {
+        // Проверяем, существует ли уже группа
+        if(!acf_get_field_group('group_crypto_settings')) {
+            acf_add_local_field_group(array(
+                'key' => 'group_crypto_settings',
+                'title' => 'Настройки криптовалюты',
+                'fields' => array(
+                    array(
+                        'key' => 'field_crypto_wallet_address',
+                        'label' => 'Адрес кошелька USDT TRC20',
+                        'name' => 'crypto_wallet_address',
+                        'type' => 'text',
+                        'default_value' => 'TQEQHJRLz1HUQcaJtfAgh7jWi1SiE2cpJT',
+                        'instructions' => 'Укажите адрес кошелька для приема платежей в USDT TRC20',
+                    ),
+                ),
+                'location' => array(
+                    array(
+                        array(
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'theme-general-settings',
+                        ),
+                    ),
+                ),
+            ));
+        }
+    }
+}
+
+// Обновляем отображение типа платежа в админке
+add_filter('volumefx_payment_type_display', 'volumefx_service_page_payment_type_display', 10, 2);
+function volumefx_service_page_payment_type_display($display, $payment) {
+    if($payment->type === 'service') {
+        // Проверяем, является ли это страницей
+        $post_type = get_post_type($payment->product_id);
+        if($post_type === 'page') {
+            $service_name = get_post_meta($payment->product_id, 'service_payment_name_' . $payment->id, true);
+            return 'Услуга: ' . ($service_name ?: 'Услуга');
+        }
+    }
+    return $display;
 }
